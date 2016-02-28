@@ -2,36 +2,63 @@
 window.isTouchDevice =  (/android|webos|iphone|ipod|ipad|blackberry|iemobile/i.test(navigator.userAgent.toLowerCase()) )
 var clickEvent = window.isTouchDevice ? 'touchstart' : 'click';
 
+pubKeyByteArrayToAddress = function(byteArray) {
+	try {
+		var pub = bitcoin.ECPubKey.fromBuffer( byteArray );
+		return pub.getAddress().toString()
+	} catch(err) {
+		return null
+	}
+}
+
+var getAddressesFromRedeemscript = function(redeemscript) {
+	var script = bitcoin.Script.fromHex(redeemscript);
+	return [_.map(script.chunks.slice(1, script.chunks.length - 2), pubKeyByteArrayToAddress) ,
+	 (Bitcoin.address.fromOutputScript(bitcoin.Script.fromHex(redeemscript).buffer) || null)
+	] ;
+}
+var getSignadors = function(rawTx) {
+	var tx = Bitcoin.Transaction.fromHex(rawTx);
+	var txb = Bitcoin.TransactionBuilder.fromTransaction(tx);
+	return _.without(_.without(_.uniq(_.flatten(_.map(txb.inputs, function(input, i){
+			return [].concat.apply([],[
+				getAddressesFromRedeemscript(tx.ins[i].script.toString('hex')),
+				[(typeof(tx.ins[i].script) != 'object' || Bitcoin.address.fromOutputScript(tx.ins[i].script)) || null]
+			])
+		}))), null), true)
+	}
+
+
 var base58 = (function(alpha) {
-    var alphabet = alpha || '123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ',
-        base = alphabet.length;
-    return {
-        encode: function(enc) {
-            if(typeof enc!=='number' || enc !== parseInt(enc))
-                throw '"encode" only accepts integers.';
-            var encoded = '';
-            while(enc) {
-                var remainder = enc % base;
-                enc = Math.floor(enc / base);
-                encoded = alphabet[remainder].toString() + encoded;        
-            }
-            return encoded;
-        },
-        decode: function(dec) {
-            if(typeof dec!=='string')
-                throw '"decode" only accepts strings.';            
-            var decoded = 0;
-            while(dec) {
-                var alphabetPosition = alphabet.indexOf(dec[0]);
-                if (alphabetPosition < 0)
-                    throw '"decode" can\'t find "' + dec[0] + '" in the alphabet: "' + alphabet + '"';
-                var powerOf = dec.length - 1;
-                decoded += alphabetPosition * (Math.pow(base, powerOf));
-                dec = dec.substring(1);
-            }
-            return decoded;
-        }
-    };
+	var alphabet = alpha || '123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ',
+		base = alphabet.length;
+	return {
+		encode: function(enc) {
+			if(typeof enc!=='number' || enc !== parseInt(enc))
+				throw '"encode" only accepts integers.';
+			var encoded = '';
+			while(enc) {
+				var remainder = enc % base;
+				enc = Math.floor(enc / base);
+				encoded = alphabet[remainder].toString() + encoded;        
+			}
+			return encoded;
+		},
+		decode: function(dec) {
+			if(typeof dec!=='string')
+				throw '"decode" only accepts strings.';            
+			var decoded = 0;
+			while(dec) {
+				var alphabetPosition = alphabet.indexOf(dec[0]);
+				if (alphabetPosition < 0)
+					throw '"decode" can\'t find "' + dec[0] + '" in the alphabet: "' + alphabet + '"';
+				var powerOf = dec.length - 1;
+				decoded += alphabetPosition * (Math.pow(base, powerOf));
+				dec = dec.substring(1);
+			}
+			return decoded;
+		}
+	};
 })();
 
 
@@ -98,7 +125,7 @@ var warp = function(hook, passphrase, salt, def){
 		"dkLen"    : 16,
 		"pbkdf2c"  : 8192
 	};
-    
+	
 	warpwallet.run({
 	passphrase: passphrase,
 	salt: salt,
@@ -107,128 +134,101 @@ var warp = function(hook, passphrase, salt, def){
 	saveWarp)
 };
 
+
+var IndexModel = Backbone.Model.extend({
+	defaults:{
+		masterKey : window.localStorage.getItem('masterKey') || null
+	}
+})
+
+var IndexView = Backbone.View.extend({
+	el:$('#index'),
+	template: _.template($('#index-template').text()),
+	events:{
+	},
+	render:function(){
+		this.$el.html(this.template({
+			masterKey: this.model.get('masterKey')
+		}));
+		return this;
+	}
+});
+
+var Vault = Backbone.Model.extend({
+	defaults: {
+		masterKey : window.localStorage.getItem('masterKey') || null,
+		pubkeys : false
+	},
+	initialize : function() {
+		this.set('masterKey', window.localStorage.getItem('masterKey') || null)
+	},
+	togglepubkeys : function() {
+		this.set('pubkeys', !this.get('pubkeys'))
+	},
+	publicKey: function(n) {
+		return (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getPublicKeyBuffer().toString('hex') || null : null;
+	},
+
+	address: function(n) {
+		return (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getAddress() || null : null;
+	},
+});
+
 var VaultView = Backbone.View.extend({
 	el: $('#vault'),
 	template: _.template($('#vault-template').text()),
 	events:{
-		'slidestop .flip-min': 'generate',
-		'click .random-word': 'addRandomWord',
-		'keydown .passphrase': 'adjustPassphraseSize',
-		'keydown .salt': 'adjustPassphraseSize',
-		'click .randomize-words': 'randomizeWords',
-		'click .save-address': 'saveAddress'
+		'click .add-more-addresses' : 'addMoreAddresses',
+		'click .pubkeys-toggle' : 'pubkeysToggle'
 	},
 	stat: '',
-
-	saveAddress: function() {
-
-		//window.localStorage.setItem('data')
+	addresses: 10,
+	pubkeysToggle: function(){
+		this.model.togglepubkeys();
+		this.trigger('change');
+		this.model.trigger('change')
 	},
-	randomizeWords: function() {
+	addMoreAddresses: function(){
+		this.populate($('.address').length + 10);
+		this.trigger('change')
+	},
+	populate: function(n){
 		var master = this;
-		var passphrase = $('.passphrase').val();
-		$('.passphrase').val('');
-		_.each(Array(passphrase.split(' ').length - 1), function(a, b) {
-			master.addRandomWord();
-		})
-	},
-	addRandomWord: function() {
-		$('.passphrase').val( $('.passphrase').val() + ' ' + randomWords(1) );
-		this.adjustPassphraseSize();
-
-	},
-	adjustPassphraseSize: function() {
-		var maxWidth = $('.passphrase').width() / 10;
-		if ($('.passphrase').val().length > maxWidth) {
-			$('.passphrase').css('font-size','12px')
-		}
-		if ($('.passphrase').val().length < maxWidth) {
-			$('.passphrase').css('font-size','18px')
-		}
-		if ($('.salt').val().length > maxWidth) {
-			$('.salt').css('font-size','12px')
-		}
-		if ($('.salt').val().length < maxWidth) {
-			$('.salt').css('font-size','18px')
-		}
-	},
-	render: function() {
-		this.$el.html(this.template());
-		return this;
-	},
-	showQRCodes: function() {
-		try {
-			var qrPkey = new QRCode("qrcode-pkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var qrPubkey = new QRCode("qrcode-pubkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var qrAddress = new QRCode("qrcode-address", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			qrPkey.makeCode(this.model.get('WIF'));
-			qrPubkey.makeCode(this.model.publicKey());
-			qrAddress.makeCode(this.model.address());
-
-			$('.label-address').val(this.model.address());
-			$('.label-pubkey').val(this.model.publicKey());
-			$('.label-pkey').val(this.model.get('WIF'));
-			$('canvas').css({
-				'position': 'absolute',
-				'margin-left': '8%',
-				'margin-right': '8%',
-				'width': '70%',
-				'vertical-align': 'middle',
-				'background':'default', 
-				'border': '8px solid #FFFFFF', 
-				'color': '#000000', 
-				'title': 'Details',
-				'hide': { effect: "fade", duration: 2000 }
-			});
-			$('.qrcode').css('display','block');
-			$('.qrcode').css('height', 0.7 * $('body').width() + 'px');
-			$('.qrcodes').css('display','block');
-		} catch(err){
-            console.log(err);
-        }
-	},
-	generate: function() {
-		console.log(this.stat)
-		if ($('.flip-min').val() == 'off') {
-			if (this.stat = 'calculating') {
-				window.location.reload()
+		$('.addresses-list').html(				_.map(Array(n || 10),function(a, i){ return '<li class="address ui-first-child" id="' + i + '">\
+					<a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">' + JSON.parse(window.localStorage.getItem('addresses'))[i] + '</a><div id="qrcode-pkey' + i + '"></div>\
+				</li>'}).join('\n')
+		);
+		$('.addresses-list').append('<li class="ui-first-child add-more-addresses" style=""><a style="font-size:50px; width:100%" class="ui-btn ui-icon-plus ui-btn-icon-notext" role="button" data-role="button"></a></li>')
+		$('.address').on('click', function(c){
+			if ($('canvas').length > 0){
+				$('canvas').remove();
 			} else {
-				return
+				$('[id^=qrcode-pkey]').empty()
+				console.log(c.currentTarget.id);
+				var qrPkey = new QRCode("qrcode-pkey" + c.currentTarget.id, {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
+				if (master.model.get('pubkeys')) {
+					qrPkey.makeCode(Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(c.currentTarget.id).getPublicKeyBuffer().toString('hex')	)
+				} else {
+					qrPkey.makeCode(Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(c.currentTarget.id).getAddress());
+				}
+				$('canvas').css({
+					'position': 'relative',
+					'margin-left': '10%',
+					'margin-right': '10%',
+					'width': '70%',
+					'vertical-align': 'middle',
+					'background':'default', 
+					'border': '8px solid #FFFFFF', 
+					'color': '#000000', 
+					'title': 'Details',
+					'hide': { effect: "fade", duration: 2000 }
+				});
 			}
-		} else {
-			if (this.stat == 'calculating') {
-				console.log('returning')
-				return
-			}
-		}
-
-		if (typeof warpwallet == 'undefined'){
-			$('body').append('<script type="text/javascript" src="js/warpwallet.js"></script>\
-			<script type="text/javascript" src="js/bitcoinjs.min.js"></script>');
-		}
-
-		var master = this;
-
-		$('.ui-slider-label', this.el).css('background-color','red');
-
-		var hook = function(pct) {
-			var value = (Math.floor(100 * (((pct.what == 'pbkdf2' ? 524288 : 0) + pct.i) / (524288 + 65536))) );
-			$('#progressbar').progressbar({
-				value: value
-			});
-			$('.ui-slider-label').html(value + ' %')
-		}
-
-		this.stat = 'calculating'
-		var def = $.Deferred();
-		
-		warp(hook, $('.passphrase').val() , $('.salt').val(), def)
-		def.done(function(wif){
-            console.log('drawing')
-			$('.ui-slider-label', this.el).css('background-color','default');
-			master.model.set('WIF', wif);
-			master.showQRCodes();
 		})
+	},
+	render: function(n) {
+		this.$el.html(this.template({ pubkeys:this.model.get('pubkeys'), addresses: this.addresses}));
+		return this;
 	}
 });
 
@@ -314,12 +314,16 @@ var signView = Backbone.View.extend({
 	},
 
 	enterPkey: function() {
+		
 		var master = this;
 		var passphrase = window.prompt('Enter your warp passphrase');
 		if (!passphrase) {return}
 		try {
+			console.log(passphrase);
 			Bitcoin.ECPair.fromWIF(passphrase);
 			master.model.set('wif', passphrase);
+			console.log(passphrase);
+			console.log(this.model.get('wif'))
 			master.model.signRawTx();
 			master.checkAndDrawQr();
 			return
@@ -338,69 +342,111 @@ var signView = Backbone.View.extend({
 		warp(hook, passphrase , salt, def)
 		def.done(function(wif){
 			master.model.set('wif', wif);
-            console.log(wif)
+			console.log(wif)
 			master.model.signRawTx();
 			//this.model.set('wif','5JMTtVLuW1v81dqK15ftgmRY5fSKUAFp1iX94KqN1MdZpYTS5uJ')
+			console.log('checkanddraw');
 			master.checkAndDrawQr();
 		})
 	},
-
+	findSigningAddress: function(tx){
+		var txb = Bitcoin.TransactionBuilder.fromTransaction(Bitcoin.Transaction.fromHex(tx))
+		var listOfSignadors = getSignadors(tx)/*_.uniq(_.flatten(_.map(txb.inputs, function(input){
+			if (input.scriptType == "multisig"){
+				return _.map(input.pubKeys, function(a, i){
+					return Bitcoin.ECPair.fromPublicKeyBuffer(input.pubKeys[i]).getAddress()
+				});
+			} else {
+				return Bitcoin.address.fromOutputScript(input.prevOutScript)
+			}
+		})))*/
+		console.log(listOfSignadors)
+		var compatibles = []
+		var addresses = JSON.parse(window.localStorage.getItem('addresses'));
+		var bunchOfAddresses = _.map(Array(30), function(a, i){
+			if (compatibles.length == listOfSignadors.length) {
+				return
+			}
+			var address = Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress();
+			if (listOfSignadors.indexOf(addresses[i]) > -1) {
+				compatibles.push(i);
+			}
+			//return address
+		});
+		return compatibles
+	},
 	scanRawTx: function(chunks) {
 		chunks = chunks || []
 		var master = this;
 		var result = {}
 
-		//try{
-		//cordova.plugins.barcodeScanner.scan(
-		//	function (result) {
-		result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a91484895ea08614b612beaf15701664bec5c9ecca1588acffffffff0190435900000000001976a91484895ea08614b612beaf15701664bec5c9ecca1588ac00000000'
-				if (result.text.indexOf(':') > -1){
-					chunks[result.text.split(':')[0]] = result.text.split(':')[1]
-					try {
-						Bitcoin.Transaction.fromHex(chunks.join(''));
-						result.text = chunks.join('');
-					} catch(err) {
-						window.alert('Transaction incomplete, click OK to continue scanning');
-						master.scanRawTx(chunks)
-					}
-				}
-				try {
-
-					var txh = Bitcoin.Transaction.fromHex(result.text)
-					_.each(txh.ins,function(a, b){
-						a.script.chunks = [];
-						a.script.buffer = [];
-					})
+		try {
+		cordova.plugins.barcodeScanner.scan(function(result){
+		//	function (result) {01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488acffffffff01f0b9f505000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488ac00000000
+		//to sign with the first address of aaa : result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488acffffffff01f0b9f505000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488ac00000000'
+		//to sign with the private key of aaa
+		//result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914b578bdcc8883616f69a44909134ac9b74b6dfb4388acffffffff01f0b9f505000000001976a914b578bdcc8883616f69a44909134ac9b74b6dfb4388ac00000000'
+		//result['text'] = '0100000002e168e7d371c57e51ebd5a7610118331e6aaa012abe6648b4830ea74431a1ff5c01000000fd160100473044022074871f25d1e43e5a4da146fefbea5b308e04c29acf5457ee1c1fed265d124ab10220572095e6c7e1902b1cefd59aa6c591314490dc980829856d6e9ae8c5d149a81f0100004cc95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff193e1ad9df7ec7c7c18b17a5ebf16d639d0e1b4063ea11110e6fa42a87427f3400000000fd16010047304402202835c2653edd0932c814693fbc26b7ca881d8ac8f31c91b961f3dc1fa66f4f2102201762fd7ce33dad5469987b9fef58961b543a20d4862bae6fad1d2d147b254c2e0100004cc95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff01409c0000000000001976a9147355a4982ef75ab49f28225400bffd311b8f337288ac00000000'
+			
+			// IF PARTIAL QR CODE IS SENT, USERS SHOULD WRITE IT WITH FORMAT"n:tx"
+			if (result.text.indexOf(':') > -1){
+				chunks[result.text.split(':')[0]] = result.text.split(':')[1]
+				try {
+					Bitcoin.Transaction.fromHex(chunks.join(''));
+					result.text = chunks.join('');
 				} catch(err) {
-					alert("QRcode doesnt seem valid, try again...");
-					return
+					window.alert('Transaction incomplete, click OK to continue scanning');
+					master.scanRawTx(chunks)
 				}
+			}
+			// ---------------------------------------------------------- 
 
-				master.model.set('rawTx', result.text);
-
-
-				var txb = Bitcoin.TransactionBuilder.fromTransaction(txh);
-				txb.inputs = txb.inputs.map(function(a, i){ return typeof(a.hashType)=='undefined' ? {} : a});
-				$('.outputs').append('Outputs :</br>')
-				_.each(master.model.outputs(),function(a, b){
-					$('.outputs').append('<div style="padding-left:20px"> ' + a.address + ' : ' + ( a.value / 100000000 ) + '</div>')
+			try {
+				var txh = Bitcoin.Transaction.fromHex(result.text)
+				_.each(txh.ins,function(a, b){
+					a.script.chunks = [];
+					a.script.buffer = [];
 				})
-				$('.outputs').append('Total : ' + _.reduce(master.model.outputs(), function(a, b) { return a + b.value}, 0) / 100000000)
-				master.checkAndDrawQr();
-		/*	}, 
-			function (error) {
+			} catch(err) {
 				alert("QRcode doesnt seem valid, try again...");
+				return
+			}
+
+			master.model.set('rawTx', result.text);
+			var txb = Bitcoin.TransactionBuilder.fromTransaction(txh);
+			txb.inputs = txb.inputs.map(function(a, i){ return typeof(a.hashType)=='undefined' ? {} : a});
+			$('.outputs').empty()
+			$('.outputs').append('Outputs :</br>')
+			_.each(master.model.outputs(),function(a, b){
+				$('.outputs').append('<div style="padding-left:20px"> ' + a.address + ' : ' + ( a.value / 100000000 ) + '</div>')
 			})
-		} catch(err){
+			$('.outputs').append('Total : ' + _.reduce(master.model.outputs(), function(a, b) { return a + b.value}, 0) / 100000000)
+			master.checkAndDrawQr();
+
+
+			var compatibles = this.findSigningAddress(result['text']);
+			if (compatibles.length == 0){
+				window.alert('Your master private key doesn\'t seem to be capable of signing any input!')
+			} else {
+				window.alert('Your master private key is capable of signing this transaction ! (derivation ' + JSON.stringify(compatibles));
+			}
+
+
+		}, 
+		function (error) {
+			alert("QRcode doesnt seem valid, try again...");
+		}
+
+		)} catch(err){
 			window.alert(err);
-		}*/
+		}
 	},
 
 	scanPkey: function() {
 		var master = this;
-		//cordova.plugins.barcodeScanner.scan(
-		//	function (result) {
-				result.text = '5JMTtVLuW1v81dqK15ftgmRY5fSKUAFp1iX94KqN1MdZpYTS5uJ';
+		cordova.plugins.barcodeScanner.scan(
+			function (result) {
+				//result.text = '5JMTtVLuW1v81dqK15ftgmRY5fSKUAFp1iX94KqN1MdZpYTS5uJ';
 				try{
 					var ECPair = Bitcoin.ECPair.fromWIF(result.text);
 					master.model.set('wif', result.text )
@@ -409,11 +455,11 @@ var signView = Backbone.View.extend({
 				} catch(err) {
 					console.log('invalid WIF');
 				}
-		/*	},
+			},
 			function (error) {
 				alert("there was some error: " + error);
 			}
-		)*/
+		)
 	}
 });
 
@@ -422,32 +468,56 @@ var Transaction = Backbone.Model.extend({
 		rawTx : '',
 		signedRawTx : '',
 		wif : '',
+		compatibles: []
 	},
+
 	signRawTx : function(){
+		var tx = Bitcoin.Transaction.fromHex(this.get('rawTx'));
+		var txb = Bitcoin.TransactionBuilder.fromTransaction(tx);
+		var listOfSignadors = getSignadors(this.get('rawTx'));
+		var masterPrivKey = Bitcoin.HDNode.fromSeedHex( base58.decode(this.get('wif')).toString(16)).toBase58()
+		var compatibles = []
+
+		var compatibles = _.reduce(_.map(Array(50), function(a,i){return i}), function(memo, i){
+			if (listOfSignadors.length == compatibles.length) {
+				return memo
+			};
+			address = Bitcoin.HDNode.fromBase58(masterPrivKey).derive(i).getAddress();
+			if (listOfSignadors.indexOf(address) > -1) {
+				memo.push(Bitcoin.HDNode.fromBase58(masterPrivKey).derive(i).keyPair.toWIF())
+			}
+			return memo
+		}, []);
+
+
+		motherAddress = Bitcoin.ECPair.fromWIF(this.get('wif')).getAddress();
+		pkey = listOfSignadors.indexOf(motherAddress) > -1 ? [this.get('wif')] : [];
+		pkeys = _.union(pkey, compatibles)
 
 		var master = this;
-        console.log(this.get('rawTx'));
 		try {
-			var pp = Bitcoin.TransactionBuilder.fromTransaction(Bitcoin.Transaction.fromHex(this.get('rawTx')));//
+			var tx = Bitcoin.Transaction.fromHex(this.get('rawTx'));
+			var pp = Bitcoin.TransactionBuilder.fromTransaction(tx);//Bitcoin.Transaction.fromHex(this.get('rawTx'))
 			_.each(pp.inputs, function(a, i){ a.prevOutType = a.scriptType = typeof(a.hashType) == "undefined" ? undefined : a});
-            console.log(pp);
-			var redeemscript = pp.inputs[0].redeemScript || null;//Bitcoin.Transaction.fromHex(this.get('rawTx')).ins[0].script;
-			pkey = Bitcoin.ECPair.fromWIF(this.get('wif'));
+			
 			_.each(pp.tx.ins, function(data, index) {
 				try {
-                    if (redeemscript) {
-					   pp.sign(index, pkey, redeemscript);
-                    } else {
-                        pp.sign(index, pkey)
-                    }
+					var redeemscript = pp.inputs[index].redeemScript || null;
+					var addresses = _.map(pkeys,function(pkey){return Bitcoin.ECPair.fromWIF(pkey).getAddress()});
+					_.each(_.intersection(addresses , getAddressesFromRedeemscript(tx.ins[index].script.toString('hex'))), function(address){
+						if (redeemscript) {
+							pp.sign(index, Bitcoin.ECPair.fromWIF(pkey), redeemscript);
+						} else {
+							pp.sign(index, Bitcoin.ECPair.fromWIF(pkeys[addresses.indexOf(address)]))
+						}
+					})
+					
 				} catch(err){
 					console.log(err)
 				}
 			});
 			try {
-                console.log(pp);
 				pp.build();
-                console.log('1')
 				console.log({ 
 					'hash' : revertHash(pp.build().getHash().toString('hex')) , 
 					'raw' : pp.build().toHex() 
@@ -457,7 +527,7 @@ var Transaction = Backbone.Model.extend({
 					'raw' : pp.build().toHex() 
 				}
 			} catch(err) {
-                console.log('2')
+				console.log('2')
 				console.log( { 
 					'hash' : revertHash(pp.buildIncomplete().getHash().toString('hex')) , 
 					'raw' : pp.buildIncomplete().toHex() 
@@ -476,7 +546,9 @@ var Transaction = Backbone.Model.extend({
 
 			_.each(txb.tx.ins, function(data, index) {
 				try {
-					txb.sign(index , Bitcoin.ECPair.fromWIF(master.get('wif')));
+					_.each(pkeys, function(pkey){
+						txb.sign(index , pkey);
+					})
 				} catch(err) {
 					console.log(err);
 				}
@@ -508,7 +580,6 @@ var Transaction = Backbone.Model.extend({
 	outputs : function() {
 		try {
 			return _.map(Bitcoin.Transaction.fromHex(this.get('rawTx')).outs, function(a, b){
-				console.log(a)
 				scriptToAddress(a.script)
 				return {
 					address: scriptToAddress(a.script),
@@ -524,7 +595,8 @@ var Transaction = Backbone.Model.extend({
 		return {
 			rawTx : this.get('rawTx'),
 			outputs : this.outputs(),
-			wif : this.get('wif')
+			wif : this.get('wif'),
+			masterKey : window.localStorage.getItem('masterKey')
 		}
 	},
 
@@ -545,37 +617,18 @@ var Transaction = Backbone.Model.extend({
 	}
 
 });
-var Vault = Backbone.Model.extend({
-	defaults: {
-		WIF: '',
-		passphrase: '',
-		salt: ''
-	},
 
-	wif: function() {
-		return this.get('WIF')
-	},
-
-	publicKey: function() {
-		return WIFToPubKey(this.get('WIF'))
-	},
-
-	address: function() {
-		return WIFToAddress(this.get('WIF'))
-	},
-});
 
 var DeriveModel = Backbone.Model.extend({
 	defaults: {
 		masterKey : window.localStorage.getItem('masterKey') || null 
 	},
+	initialize : function() {
+		this.set('masterKey', window.localStorage.getItem('masterKey') || null)
+	},
 	getData : function(n) {
-		console.log(n);
-		console.log(this.get('masterKey'))
 		var address = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getAddress() || null : null;
-		console.log(address);
 		var pubkey = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getPublicKeyBuffer().toString('hex') || null : null;
-		console.log(pubkey)
 		try {
 			Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).keyPair.toWIF()
 			var pkey = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).keyPair.toWIF() || null : null;
@@ -595,160 +648,125 @@ var DeriveModel = Backbone.Model.extend({
 	saveMasterKey : function() {
 		try {
 			window.localStorage.setItem('masterKey', Bitcoin.HDNode.fromBase58( this.get('masterKey') ).neutered().toBase58())
-			window.alert('PUBLIC MASTER KEY saved successfully')
 			this.trigger('change');
+
+			var bunchOfAddresses = _.map(Array(100), function(a, i){
+				return Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress();
+			});
+			window.localStorage.setItem('addresses', JSON.stringify(bunchOfAddresses))
+
 		} catch(err) {
 			window.alert('there was a problem : ' + err)
 		}
 	},
-    deleteMasterKey: function() {
-        this.set({'masterKey': null});
-        this.trigger('change');
-    }
+	deleteMasterKey: function() {
+		window.localStorage.removeItem('masterKey');
+		this.set({'masterKey': null});
+		this.trigger('change');
+	}
 });
 
 var DeriveView = Backbone.View.extend({
 	el: $('#derive'),
 	template: _.template($('#derive-template').text()),
 	events:{
-		'click .btn-scan-master-key' : 'scanMasterKey',
-		'click .btn-enter-seed' : 'enterWarpSeed',
-		'click .btn-derivate' : 'derivate',
-		'click .btn-enter-mpubkey' : 'enterMasterKey',
-		//'click .btn-save-master-key' : 'saveMasterKey',
-		'click .btn-forget-master-key' : 'forgetMasterKey'
+		'slidestop .flip-min': 'generate',
+		'click .random-word': 'addRandomWord',
+		'keydown .passphrase': 'adjustPassphraseSize',
+		'keydown .salt': 'adjustPassphraseSize',
+		'click .randomize-words': 'randomizeWords',
+		'click .save-address': 'saveAddress',
+		'click .btn-forget-master-key': 'forgetMasterKey'
 	},
-	forgetMasterKey: function() {
-		try {
-			window.localStorage.clear()
-			window.alert('Deleted ! Nothing left in storage !')
-            this.model.deleteMasterKey();
-            this.model.trigger('change');
-
-		} catch(err) {
-			window.alert('Something went wrong : ' + err);
+	stat: '',
+	initialize: function() {
+		console.log(this.model.get('masterKey'));
+	},
+	forgetMasterKey: function(){
+		var confirm = window.confirm('Are you really sure you want to delete this master key ?')
+		var confirm2 = window.confirm('Last chance ! There is no going back...')
+		if (confirm && confirm2) {
+			this.model.deleteMasterKey();
 		}
 	},
-	/*saveMasterKey: function() {
-		if (this.model.get('masterKey')) {
-			if (window.confirm('Are you sure? This will overwrite any previous master key! Notice that the MASTER PUBLIC KEY will replace the MASTER PRIVATE KEY (which will be forgotten) if you continue !')){
-				this.model.saveMasterKey();
-			}
-		} else {
-			window.alert('there is no master key to save')
-		}
-	},*/
-	enterMasterKey: function() {
-		var mkey = window.prompt('Enter your Master Key')
-		try {
-			Bitcoin.HDNode.fromBase58(mkey);
 
-			master.model.set('masterKey', mkey);
-            master.model.saveMasterKey();
-		} catch(err) {
-			console.log(err)
+	saveAddress: function() {
+
+		//window.localStorage.setItem('data')
+	},
+	randomizeWords: function() {
+		var master = this;
+		var passphrase = $('.passphrase').val();
+		$('.passphrase').val('');
+		_.each(Array(passphrase.split(' ').length - 1), function(a, b) {
+			master.addRandomWord();
+		})
+	},
+	addRandomWord: function() {
+		$('.passphrase').val( $('.passphrase').val() + ' ' + randomWords(1) );
+		this.adjustPassphraseSize();
+
+	},
+	adjustPassphraseSize: function() {
+		var maxWidth = $('.passphrase').width() / 10;
+		if ($('.passphrase').val().length > maxWidth) {
+			$('.passphrase').css('font-size','12px')
+		}
+		if ($('.passphrase').val().length < maxWidth) {
+			$('.passphrase').css('font-size','18px')
+		}
+		if ($('.salt').val().length > maxWidth) {
+			$('.salt').css('font-size','12px')
+		}
+		if ($('.salt').val().length < maxWidth) {
+			$('.salt').css('font-size','18px')
 		}
 	},
 	render: function() {
-		var master = this;
-		this.$el.html(this.template({masterKey: master.model.get('masterKey')}));
+		this.$el.html(this.template({masterKey: this.model.get('masterKey')}));
 		return this;
 	},
-	scanMasterKey: function() {
-		var master = this;
-		cordova.plugins.barcodeScanner.scan(
-			function (result) {
-			//var result = {}
-			//result.text = 'xpub661MyMwAqRbcFUz42g84vqvKbJ5dTVUya7X4K867YfnGUKAVorDPpywZcsQmPGz9k83NjPGTfzxDwQ8TpC7q8GbcSztYAK6dt7qzmRwmUow'
-				try {
-					Bitcoin.HDNode.fromBase58(result.text);
-					master.model.set('masterKey', result.text);
-				} catch(err) {
-					console.log(err)
-				}
-			},
-			function (err) {
-				window.alert(err);
-			}
-		)
-		this.showQRCodes();
-	},
-	derivate: function() {
-		try {
-			this.showQRCodes();
-			window.alert('Derivation done !')
-		} catch(err) {
-			window.alert(err);
-		}
-	},
-	showQRCodes: function() {
-		try {
-			var qrPkey = new QRCode("qrcode-pkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var qrPubkey = new QRCode("qrcode-pubkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var qrAddress = new QRCode("qrcode-address", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var qrXpub = new QRCode("qrcode-xpub", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
-			var data = this.model.getData($('.derivation').val());
-			console.log(data);
-			qrAddress.makeCode(data.address);
-			qrPubkey.makeCode(data.pubkey);
-			if (data.pkey.length > 10) {
-				qrPkey.makeCode(data.pkey);
+
+	generate: function() {
+		console.log(this.stat)
+		if ($('.flip-min').val() == 'off') {
+			if (this.stat = 'calculating') {
+				window.location.reload()
 			} else {
-				$('.label-pkey').css('display','none');
-				$('.private-key').css('display','none');
-				$('.qrcode-pkey').css('display','none');
+				return
 			}
-			qrXpub.makeCode(data.xpub);
-
-			$('.label-address').val(data.address);
-			$('.label-pubkey').val(data.pubkey);
-			$('.label-pkey').val(data.pkey);
-			$('.label-xpub').val(data.xpub);
-
-			$('canvas').css({
-				'position': 'absolute',
-				'margin-left': '8%',
-				'margin-right': '8%',
-				'width': '70%',
-				'vertical-align': 'middle',
-				'background':'default', 
-				'border': '8px solid #FFFFFF', 
-				'color': '#000000', 
-				'title': 'Details',
-				'hide': { effect: "fade", duration: 2000 }
-			});
-			$('.qrcode').css('display','block');
-			$('.qrcode').css('height', 0.7 * $('body').width() + 'px');
-			$('.qrcodes').css('display','block');
-
-			if (data.pkey.length < 10) {
-				$('.label-pkey').css('display','none');
-				$('.private-key').css('display','none');
-				$('.qrcode-pkey').css('display','none');
+		} else {
+			if (this.stat == 'calculating') {
+				console.log('returning')
+				return
 			}
-		} catch(err){
-			console.log(err);
-		}		
-	},
-	enterWarpSeed: function() {
-		var master = this;
-		var passphrase = window.prompt('Enter your warp passphrase');
-		if (!passphrase) {return}
-		var salt = window.prompt('Enter your warp salt');
-		var def = $.Deferred();
-		$('.calculation').css('display','block');
-
-		var hook = function(pct){
-			var value = (Math.floor(100 * (((pct.what == 'pbkdf2' ? 524288 : 0) + pct.i) / (524288 + 65536))) );
-			$('.calculation').html(value + ' %')
 		}
+
+		if (typeof warpwallet == 'undefined'){
+			$('body').append('<script type="text/javascript" src="js/warpwallet.js"></script>\
+			<script type="text/javascript" src="js/bitcoinjs.min.js"></script>');
+		}
+
+		var master = this;
+
+		$('.ui-slider-label', this.el).css('background-color','red');
+
+		var hook = function(pct) {
+			var value = (Math.floor(100 * (((pct.what == 'pbkdf2' ? 524288 : 0) + pct.i) / (524288 + 65536))) );
+			$('#progressbar').progressbar({
+				value: value
+			});
+			$('.ui-slider-label').html(value + ' %')
+		}
+
+		this.stat = 'calculating'
 		var def = $.Deferred();
-		warp(hook, passphrase , salt, def)
+		
+		warp(hook, $('.passphrase').val() , $('.salt').val(), def)
 		def.done(function(wif){
 			master.model.set('masterKey', Bitcoin.HDNode.fromSeedHex( base58.decode(wif).toString(16)).toBase58());
-			window.alert('Master Key created, you can now derive it')
-			//console.log(master.model.get('masterKey'));
-		})	
+			master.model.saveMasterKey();
+		})
 	}
 });
 
@@ -797,10 +815,20 @@ var app = {
 	},*/
 
 	index: function(){
+		this.undelegateAll();
+		this.bindEvents();
 
+		indexHolder = $('#index');
+		indexHolder.empty() 
+		var indexModel = new IndexModel;
+		var indexView = new IndexView({model: indexModel});
+
+		this.activeViews.push( indexView );
+		indexView.render().$el.appendTo(indexHolder)    
+		indexHolder.enhanceWithin();
 	},
 
-	vault: function(){
+	/*vault: function(){
 		this.undelegateAll();
 		this.bindEvents();
 
@@ -810,8 +838,35 @@ var app = {
 		var vaultView = new VaultView({model:new Vault});
 
 		this.activeViews.push( vaultView );
-		vaultView.render().$el.appendTo(vaultHolder)	
+		vaultView.render().$el.appendTo(vaultHolder)
+		vaultView.populate();	
 		vaultHolder.enhanceWithin();
+	},
+
+*/
+
+	vault: function(){
+
+		this.undelegateAll();
+		this.bindEvents();
+
+		var vault = new Vault({})
+
+		vaultHolder = $('#vault');
+		vaultHolder.empty()
+		var view = new VaultView({model:vault});
+		this.activeViews.push( view );
+
+		var render = function(){
+			view.render().$el.appendTo(vaultHolder)
+			view.populate();
+			vaultHolder.enhanceWithin();	
+		}
+
+		render();
+
+		vault.listenTo(vault, 'change', render)
+
 	},
 
 	sign: function(){
@@ -838,11 +893,10 @@ var app = {
 	},
 
 	derive: function(){
-
 		this.undelegateAll();
 		this.bindEvents();
 
-		
+
 		deriveModel = new DeriveModel({});
 		deriveHolder = $('#derive');
 		deriveHolder.empty()
@@ -853,18 +907,15 @@ var app = {
 			view.render().$el.appendTo(deriveHolder)
 			deriveHolder.enhanceWithin();	
 		}
-		var enhance = function(){
-			deriveHolder.enhanceWithin();
-		}
 		render();
 
 		view.listenTo(deriveModel, 'change', render)
-	},
+	}
 };
 
 var router = new $.mobile.Router([
 		{ "": { handler: "index", events: "bs"} },
 		{ "#vault": { handler: "vault", events: "bs"} },
 		{ "#sign": { handler: "sign", events: "bs"} },
-		{ "#derive": { handler: "derive", events: "bs"} }
+		{ "#derive": { handler: "derive", events: "bs"} },
 ], app);

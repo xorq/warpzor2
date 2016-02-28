@@ -10,7 +10,7 @@
 		<meta name="format-detection" content="telephone=no">
 		<meta name="msapplication-tap-highlight" content="no">
 		<meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width">
-		<title>Easy BTC Mobile</title>
+		<title>WARPZOR</title>
 
 		<script type="text/javascript" src="bower_components/jquery/jquery.min.js"></script>
 		<script type="text/javascript" src="js/jquery-ui.min.js"></script>
@@ -19,36 +19,20 @@
 		<script type="text/javascript" src="js/jquery.mobile-1.4.5.min.js"></script>
 		<script type="text/javascript" src="bower_components/underscore/underscore.js"></script>
 		<script type="text/javascript" src="js/qrcode.js"></script>
-			<script type="text/javascript" src="js/warpwallet.js"></script>\
+			<script type="text/javascript" src="js/warpwallet.js"></script>
 			<script type="text/javascript" src="js/bitcoinjs.min.js"></script>
+			<script type="text/javascript" src="js/bitcoin-lib.js"></script>
 		<link rel="stylesheet" href="css/jquery-ui.min.css" />
 		<link rel="stylesheet" href="bower_components/jquery-mobile/css/themes/default/jquery.mobile.css" />
-		<link rel="stylesheet" type="text/css" href="css/index.css" />
 		<script type="text/javascript" src="bower_components/backbone/backbone-min.js"></script>
 		<script type='text/javascript' src='bower_components/backbone.touch/backbone.touch.js'></script>
+		<link rel="stylesheet" type="text/css" href="css/index.css" />
 	</head>
 	<body>
-		<div class="index" id="index" data-role="page" data-theme="b">
-			<div data-role='header' role='banner' class='ui-header ui-bar-inherit'>
-				<a href='#index' data-transition='slide' data-direction='reverse' class='btn-back ui-btn-left ui-btn ui-icon-home ui-btn-icon-notext' data-role='button' role='button' style='display:none'></a>
-				<a href="#popupInfo1" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>
-				<h2 style='margin:0px;font-size:36px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''>WARPZOR</h2>
-			</div>
-			<div style='left-margin:20px' class='result' id='result'>
-				<ul class="ui-listview" data-role="listview" data-type="horizontal">
-					<li class="ui-first-child">
-						<a <a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">WARP VAULT GENERATOR</a>
-					</li>
-					<li class="ui-last-child">
-						<a <a href="#sign" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">WARP TRANSACTION</a>
-					</li>
-					<li class="ui-last-child">
-						<a <a href="#derive" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">HD NODE</a>
-					</li>
-				</ul>
-			</div>
-			<div data-role="popup" id="popupInfo1" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
-  			<p>This tool is for users of <a href="http://keybase.io/warp"> warp wallet</a>, to be able to do air gapped transactions with only QRcodes to transmit data in and out the offline device. It is open source on <a href="https://github.com/xorq/warpzor/">github</a>
+
+
+		<div class="index" id="index" data-role="page" data-theme="b" data-direction='reverse'>
+			<div class="indexHolder" id="indexHolder" data-role="page" data-theme="b"></div>
 			</div>
 		</div>
 		<div class="vault" id="vault" data-role="page" data-theme="b" data-direction='reverse'>
@@ -69,50 +53,43 @@
 			<div data-role='header' role='banner' class='ui-header ui-bar-inherit'>
 				<a href='#index' data-transition='slide' style="margin-top:10px" data-direction='reverse' class='btn-back ui-btn-left ui-btn ui-icon-home ui-btn-icon-notext' data-role='button' role='button' style='display:block'></a>
 				<a href="#popupInfo4" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>
-				<h2 style='margin:0px;font-size:36px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''>HD NODE</h2>
+				<h2 style='margin:0px;font-size:36px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''>WALLET</h2>
 			</div>
 			<div style='left-margin:20px' class='result ' id='result'>
 				<ul class="ui-listview" data-role="listview" data-type="horizontal" style="margin-left:10px; margin-right:10px">
-					<h2 style="color:green">CHOOSE MASTER KEY TO USE</h2>
-					<li class="" style="margin-top:20px">
-						<a href="" data-role="button" data-transition="slide" class="btn-scan-master-key ui-btn ui-icon-carat-r ui-btn-icon-right" style="display:<%=masterKey ? 'none' : 'block'%>">SCAN MASTER KEY</a>
-					</li>
-					<li class="" style="margin-top:20px">
-						<a href="" data-role="button" data-transition="slide" class="btn-enter-seed ui-btn ui-icon-carat-r ui-btn-icon-right" style="display:<%=masterKey ? 'none' : 'block'%>">WARP SEED FOR MASTER KEY</a>
-					</li>
+					<h3 style="display:<%=masterKey ? 'block' : 'none'%>">Master Key is in memory</h3>
 					<li class="" style="margin-top:20px">
 						<a href="" data-role="button" data-transition="slide" class="btn-forget-master-key ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>" style="display:<%=masterKey ? 'block' : 'none'%>">FORGET PUBLIC MASTER KEY</a>
 					</li>
-					<h2 style="color:green; display:<%=masterKey ? 'block' : 'none'%>">CHOOSE DERIVATION NUMBER</h2>
-					<li class="ui-first-child" style="margin-top:20px;display:<%=masterKey ? 'block' : 'none'%>">
-						<input data-role="input" class="derivation" placeholder="Derivation Number" style="font-size:18px" ></input>
-					</li>
-					<li class="" style="margin-top:20px;display:<%=masterKey ? 'block' : 'none'%>">
-						<a href="" data-role="button" data-transition="slide" class="btn-derivate ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>">DERIVATE</a>
-					</li>
+					<div style='left-margin:20px;display:<%=masterKey ? 'none' : 'block'%>' class='passphrase-config ' id='passphrase-config'>
+						<h4>First Setup</h4>
+						<ul class="ui-listview" data-role="listview" data-type="horizontal" style="margin-left:10px; margin-right:10px">
+							<li class="ui-first-child" style="margin-top:20px;">
+								<h1 class="label-passphrase" style="display:none; font-size:24px; text-align:left">1 - Passphrase</h1>
+								<input data-role="input" class="passphrase" placeholder="PASSPHRASE" style="font-size:18px" ></input>
+								<a href="#" class="random-word" data-role="button" data-icon="plus" style="font-size:10px; padding-left:35px">ADD A RANDOM WORD</a>
+								<a href="#" class="randomize-words" data-role="button" data-icon="refresh" style="font-size:10px; padding-left:35px">RANDOMIZE WORDS</a>
+							</li>
+							<li class="ui-last-child" style="margin-top:20px;">
+								<h1 class="label-salt" style="font-size:24px; text-align:left; display:none">2 - Salt</h1>
+								<input data-role="input" class="salt" style="font-size:18px" placeholder="SALT"></input>
+								<a style="display:none"></a>
+							</li>
+							<li class="ui-first-child" style="margin-top:30px;">
+								<a style="display:none"></a>
+								<div class="" style="width:100%">
+									<select class="flip-min" name="flip-min" id="flip-min" data-role="slider">
+										<option value="off">GENERATE</option>
+										<option value="on"></option>
+									</select>
+								</div>
+							</li>
+						</ul>
+					</div>
 					<li class="calculation ui-last-child" style="margin-top:20px; display:none">
 						<h1 href="" style="display:none; text-align:center;font-size:25px"></h1>
 					</li>
 				<ul>
-				<ul class="ui-listview qrcodes" data-role="listview" data-type="horizontal" style="display:none;margin-left:10px; margin-right:10px">
-					<!--<li><Button class="save-address">Save Address</button></li>-->
-					<li><h1>Address</h1><input style='word-break:break-all' class='label-address' data-role='input'></input></li>
-					<li class="qrcode qrcode-address">
-						<div id="qrcode-address"></div>
-					</li>
-					<li><h1>Public Key</h1><input style='word-break:break-all' class='label-pubkey' data-role='input'></input></li>
-					<li class="qrcode qrcode-pubkey">
-						<div id="qrcode-pubkey"></div>
-					</li>
-					<li class='private-key'><h1>Private Key</h1><input style='word-break:break-all' class='label-pkey' data-role='input'></input></li>
-					<li class="qrcode qrcode-pkey">
-						<div id="qrcode-pkey"></div>
-					</li>
-					<li><h1>Master PubKey</h1><input style='word-break:break-all' class='label-xpub' data-role='input'></input></li>
-					<li class="qrcode qrcode-xpub">
-						<div id="qrcode-xpub"></div>
-					</li>
-				</ul>
 				<div data-role="popup" id="popupInfo4" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
 	  			<p>
 		  			1 - Choose your master key</br>
@@ -124,12 +101,41 @@
 				</div>
 			</div>
 		</script>
+		<script type="text/template" id="index-template">
+				<div data-role='header' role='banner' class='ui-header ui-bar-inherit'>
+				<a href='#derive' data-transition='slide' style="margin-top:10px" data-direction='reverse' class='btn-back ui-btn-left ui-btn ui-icon-gear ui-btn-icon-notext' data-role='button' role='button' style='display:block'></a>
+					<a href="#popupInfo1" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>
+					<h2 style='margin:0px;font-size:36px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''><img style="height:50px" src="logoexp1.png"></img></h2>
+				</div>
+				<div style='left-margin:20px' class='result' id='result'>
+					<ul class="ui-listview" data-role="listview" data-type="horizontal">
+						<li class="ui-first-child" style="display:<%=window.localStorage.getItem('masterKey') ? 'block' : 'none'%>">
+							<a <a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">RECEIVE BTC</a>
+						</li>
+						<li class="ui-last-child">
+							<a <a href="#sign" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">SEND BTC</a>
+						</li>
+						<!--<li class="ui-last-child">
+							<a id="import-tx" href="#import-tx" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">IMPORT TRANSACTION</a>
+						</li>-->
+					</ul>
+				</div>
+				<div data-role="popup" id="popupInfo1" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
+	  			<p>This tool is for users of <a href="http://keybase.io/warp"> warp wallet</a>, to be able to do air gapped transactions with only QRcodes to transmit data in and out the offline device. It is open source on <a href="https://github.com/xorq/warpzor/">github</a>
+				</div>
+			
+		</script>
 		<script type="text/template" id="vault-template">
 			<div data-role='header' role='banner' class='ui-header ui-bar-inherit'>
 				<a href='#index' data-transition='slide' style="margin-top:10px" data-direction='reverse' class='btn-back ui-btn-left ui-btn ui-icon-home ui-btn-icon-notext' data-role='button' role='button' style='display:block'></a>
-				<a href="#popupInfo2" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>
-				<h2 style='margin:0px;font-size:36px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''>VAULT</h2>
+				<!--<a href="#popupInfo2" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>-->
+				<a style="margin-top:10px;color:white" class="pubkeys-toggle"><%=pubkeys ? 'PubK' : 'Addr'%></a>
+				<h1 style='margin:0px;font-size:32px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''><%=pubkeys ? 'Pubkeys' : 'Addresses'%></h1>
 			</div>
+			<div style="display:<%=window.localStorage.getItem('masterKey') ? 'block' : 'none'%>; left-margin:20px" class='result' id='0'>
+					<ul class="ui-listview addresses-list" data-role="listview" data-type="horizontal">
+					</ul>
+				</div>
 			<div data-role="popup" id="popupInfo2" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
   			<p>This tool helps you to create a <strong>Warp Address</strong></br>
   				It outputs the same as keybase.io/warp</br>
@@ -140,28 +146,7 @@
   				</p>
 			</div>
 			<div style='left-margin:20px' class='result ' id='result'>
-				<ul class="ui-listview" data-role="listview" data-type="horizontal" style="margin-left:10px; margin-right:10px">
-					<li class="ui-first-child" style="margin-top:20px;">
-						<h1 class="label-passphrase" style="display:none; font-size:24px; text-align:left">1 - Passphrase</h1>
-						<input data-role="input" class="passphrase" placeholder="PASSPHRASE" style="font-size:18px" ></input>
-						<a href="#" class="random-word" data-role="button" data-icon="plus" style="font-size:10px; padding-left:35px">ADD A RANDOM WORD</a>
-						<a href="#" class="randomize-words" data-role="button" data-icon="refresh" style="font-size:10px; padding-left:35px">RANDOMIZE WORDS</a>
-					</li>
-					<li class="ui-last-child" style="margin-top:20px;">
-						<h1 class="label-salt" style="font-size:24px; text-align:left; display:none">2 - Salt</h1>
-						<input data-role="input" class="salt" style="font-size:18px" placeholder="SALT"></input>
-						<a style="display:none"></a>
-					</li>
-					<li class="ui-first-child" style="margin-top:30px;">
-						<a style="display:none"></a>
-						<div class="" style="width:100%">
-							<select class="flip-min" name="flip-min" id="flip-min" data-role="slider">
-								<option value="off">GENERATE</option>
-								<option value="on"></option>
-							</select>
-						</div>
-					</li>
-				</ul>
+
 				<ul class="ui-listview qrcodes" data-role="listview" data-type="horizontal" style="display:none;margin-left:10px; margin-right:10px">
 					<!--<li><Button class="save-address">Save Address</button></li>-->
 					<li><h1>Address</h1><input style='word-break:break-all' class='label-address' data-role="input"></input></li>
@@ -171,10 +156,6 @@
 					<li><h1>Public Key</h1><input style='word-break:break-all' class='label-pubkey' data-role="input"></input></li>
 					<li class="qrcode qrcode-pubkey">
 						<div id="qrcode-pubkey"></div>
-					</li>
-					<li><h1>Private Key</h1><input style='word-break:break-all' class='label-pkey' data-role="input"></input></li>
-					<li class="qrcode qrcode-pkey">
-						<div id="qrcode-pkey"></div>
 					</li>
 				</ul>
 			</div>
@@ -195,7 +176,7 @@
 					<div class="outputs">
 					</div>
 					<li class="" style="margin-top:20px">
-						<a href="" data-role="button" data-transition="slide" class="btn-enter-pkey ui-btn ui-icon-carat-r ui-btn-icon-right" style="display:<%=rawTx ? 'block' : 'none'%>">SIGN WITH WARPWALLET</a>
+						<a href="" data-role="button" data-transition="slide" class="btn-enter-pkey ui-btn ui-icon-carat-r ui-btn-icon-right" style="display:<%=rawTx && masterKey ? 'block' : 'none'%>">WARP SIGN</a>
 					</li>
 					<li class="" style="margin-top:20px">
 						<a href="" data-role="button" data-transition="slide" class="btn-scan-pkey ui-btn ui-icon-carat-r ui-btn-icon-right" style="margin-bottom:20px; display:<%=rawTx ? 'block' : 'none'%>">SCAN A PRIVATE KEY</a>
@@ -210,7 +191,7 @@
 			</div>
 			<div data-role="popup" id="popupInfo3" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
   			<p>
-	  			1 - Create a raw transaction on your computer (You can use coinb.in)</br>
+	  			1 - Create a raw transaction on your computer (You could use coinb.in)</br>
 	  			2 - Display the QRCode of the raw transaction, and scan it using the button below</br>
 	  			3 - Enter your private key informations</br>
 	  			4 - The signed transaction will be show on the screen</br>
