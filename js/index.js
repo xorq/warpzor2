@@ -16,25 +16,9 @@ var getAddressesFromRedeemscript = function(redeemscript) {
 	var script = bitcoin.Script.fromHex(redeemscript);
 	var isMultisig = bitcoin.Script.fromHex(redeemscript).chunks[1].length;
 	console.log(isMultisig)
-	var resut= isMultisig ? _.map(script.chunks.slice(1, script.chunks.length - 2), pubKeyByteArrayToAddress) : [(Bitcoin.address.fromOutputScript(bitcoin.Script.fromHex(redeemscript).buffer))]
-	console.log(resut)
-	return resut
-	/*
-	try {
-		var re = _.map(script.chunks.slice(1, script.chunks.length - 2), pubKeyByteArrayToAddress)
-		return re
-	} catch(err) {
-
-	}
-
-	try {
-		var re = (Bitcoin.address.fromOutputScript(bitcoin.Script.fromHex(redeemscript).buffer) || null)
-		return [re]
-	} catch(err) {
-
-	}*/
-	;
+	return isMultisig ? _.map(script.chunks.slice(1, script.chunks.length - 2), pubKeyByteArrayToAddress) : [(Bitcoin.address.fromOutputScript(bitcoin.Script.fromHex(redeemscript).buffer))]
 }
+
 var getSignadors = function(rawTx) {
 	console.log(rawTx);
 	var tx = Bitcoin.Transaction.fromHex(rawTx);
@@ -49,7 +33,7 @@ var getSignadors = function(rawTx) {
 			console.log(tx.ins[i].script.toString('hex'))
 			return redeemScriptExists ? getAddressesFromRedeemscript(tx.ins[i].script.toString('hex')) : Bitcoin.address.fromOutputScript(tx.ins[i].script)
 		}))), null), true)
-	}
+}
 
 
 var base58 = (function(alpha) {
@@ -419,12 +403,12 @@ var signView = Backbone.View.extend({
 		var result = {}
 
 		try {
-		//cordova.plugins.barcodeScanner.scan(function(result){
+		cordova.plugins.barcodeScanner.scan(function(result) {
 		
 
 		//	function (result) {01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488acffffffff01f0b9f505000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488ac00000000
 		//to sign with the first address of aaa : 
-		result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488acffffffff01f0b9f505000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488ac00000000'
+		//result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488acffffffff01f0b9f505000000001976a914c0ba11d12560e8dd7ff8d16551d700a896f30ea488ac00000000'
 		//to sign with the private key of aaa
 		//result['text'] = '01000000015526d0b27270d70c92eec20d12781853dc6354af725e9054c2262dc3d551037d000000001976a914b578bdcc8883616f69a44909134ac9b74b6dfb4388acffffffff01f0b9f505000000001976a914b578bdcc8883616f69a44909134ac9b74b6dfb4388ac00000000'
 		
@@ -473,10 +457,10 @@ var signView = Backbone.View.extend({
 			}
 
 
-		//}, 
-		//function (error) {
-		//	alert("QRcode doesnt seem valid, try again...");
-		//})
+		}, 
+		function (error) {
+			alert("QRcode doesnt seem valid, try again...");
+		})
 
 		
 		} catch(err){
