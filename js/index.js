@@ -201,8 +201,8 @@ var VaultView = Backbone.View.extend({
 	},
 	populate: function(n){
 		var master = this;
-		$('.addresses-list').html(				_.map(Array(n || 10),function(a, i){ return '<li class="address ui-first-child" id="' + i + '">\
-					<a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">' + JSON.parse(window.localStorage.getItem('addresses'))[i] + '</a><div id="qrcode-pkey' + i + '"></div>\
+		$('.addresses-list').html(_.map(Array(n || 10),function(a, i){ return '<li class="address ui-first-child" id="' + i + '">\
+					<a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">' + i + '\t : \t' + Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress() + '</a><div id="qrcode-pkey' + i + '"></div>\
 				</li>'}).join('\n')
 		);
 		$('.addresses-list').append('<li class="ui-first-child add-more-addresses" style=""><a style="font-size:50px; width:100%" class="ui-btn ui-icon-plus ui-btn-icon-notext" role="button" data-role="button"></a></li>')
@@ -211,7 +211,6 @@ var VaultView = Backbone.View.extend({
 				$('canvas').remove();
 			} else {
 				$('[id^=qrcode-pkey]').empty()
-				console.log(c.currentTarget.id);
 				var qrPkey = new QRCode("qrcode-pkey" + c.currentTarget.id, {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
 				if (master.model.get('pubkeys')) {
 					qrPkey.makeCode(Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(c.currentTarget.id).getPublicKeyBuffer().toString('hex')	)
@@ -338,11 +337,8 @@ var signView = Backbone.View.extend({
 		var passphrase = window.prompt('Enter your warp passphrase');
 		if (!passphrase) {return}
 		try {
-			console.log(passphrase);
 			Bitcoin.ECPair.fromWIF(passphrase);
 			master.model.set('wif', passphrase);
-			console.log(passphrase);
-			console.log(this.model.get('wif'))
 			master.model.signRawTx();
 			master.checkAndDrawQr();
 			return
@@ -361,40 +357,30 @@ var signView = Backbone.View.extend({
 		warp(hook, passphrase , salt, def)
 		def.done(function(wif){
 			master.model.set('wif', wif);
-			console.log(wif)
 			master.model.signRawTx();
-			//this.model.set('wif','5JMTtVLuW1v81dqK15ftgmRY5fSKUAFp1iX94KqN1MdZpYTS5uJ')
-			console.log('checkanddraw');
 			master.checkAndDrawQr();
 		})
 	},
 	findSigningAddress: function(tx){
-		console.log(tx)
 		var txb = Bitcoin.TransactionBuilder.fromTransaction(Bitcoin.Transaction.fromHex(tx))
 		_.each(txb.inputs, function(a, i){ a.prevOutType = a.scriptType = typeof(a.hashType) == "undefined" ? undefined : a});
-		console.log(txb)
 		var listOfSignadors = getSignadors(tx)
-
-		console.log(listOfSignadors)
 		var compatibles = []
-		var addresses = JSON.parse(window.localStorage.getItem('addresses'));
+		//var addresses = JSON.parse(window.localStorage.getItem('addresses'));
 		var bunchOfAddresses = _.map(Array(30), function(a, i){
 			if (compatibles.length == listOfSignadors.length) {
 				return
 			}
 			var address = Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress();
-			if (listOfSignadors.indexOf(addresses[i]) > -1) {
+			if (listOfSignadors.indexOf(address) > -1) {
 				compatibles.push(i);
 			}
-			//return address
 		});
 
 		var motherAddress = localStorage.getItem('motherAddress');
 		if ((listOfSignadors.indexOf(motherAddress)) > -1) {
 			compatibles.push(motherAddress)
 		}
-
-		console.log(compatibles)
 		return compatibles
 	},
 	scanRawTx: function(chunks) {
@@ -422,14 +408,15 @@ var signView = Backbone.View.extend({
 					result.text = chunks.join('');
 				} catch(err) {
 					window.alert('Transaction incomplete, click OK to continue scanning');
+					window.alert(err);
 					master.scanRawTx(chunks)
+					return
 				}
 			}
 			// ---------------------------------------------------------- 
 
 			try {
 				var txh = Bitcoin.Transaction.fromHex(result.text)
-				console.log(txh)
 				_.each(txh.ins,function(a, b){
 					a.script.chunks = [];
 					a.script.buffer = [];
@@ -442,14 +429,12 @@ var signView = Backbone.View.extend({
 			master.model.set('rawTx', result.text);
 			var txb = Bitcoin.TransactionBuilder.fromTransaction(txh);
 			txb.inputs = txb.inputs.map(function(a, i){ return typeof(a.hashType)=='undefined' ? {} : a});
-			console.log(txb)
 			
 			master.checkAndDrawQr();
 
 
 
 			var compatibles = this.findSigningAddress(result['text']);
-			console.log(compatibles)
 			if (compatibles.length == 0){
 				//window.alert('Your master private key doesn\'t seem to be capable of signing any input!')
 			} else {
@@ -522,9 +507,6 @@ var Transaction = Backbone.Model.extend({
 		if (listOfSignadors.indexOf(motherAddress) > -1) {
 			compatibles.push(this.get('wif'))
 		}
-
-		console.log(compatibles)
-
 		var master = this;
 		try {
 			var tx = Bitcoin.Transaction.fromHex(this.get('rawTx'));
@@ -534,35 +516,14 @@ var Transaction = Backbone.Model.extend({
 			
 			_.each(pp.tx.ins, function(data, index) {
 				try {
-					console.log(tx.ins[index])
-					console.log(tx.ins[index].script)
 					var redeemScriptExists = bitcoin.Script.fromBuffer(tx.ins[index].script).chunks[1].length;
 					redeemScript = tx.ins[index].script;
-					console.log(redeemScript)
-					console.log(compatibles)
 					var addresses = _.map(compatibles,function(pkey){return Bitcoin.ECPair.fromWIF(pkey).getAddress()});
-					console.log('((((()))))')
-					console.log(addresses);
-					console.log(getAddressesFromRedeemscript(tx.ins[index].script.toString('hex')));
-					console.log(_.intersection(addresses , getAddressesFromRedeemscript(tx.ins[index].script.toString('hex'))));
 
 					_.each(_.intersection(addresses , getAddressesFromRedeemscript(tx.ins[index].script.toString('hex'))), function(address, i){
-						console.log(redeemScriptExists)
 						if (redeemScriptExists) {
-							console.log('signing redeemscript');
-							console.log(pp)
-							console.log('pkey')
-							console.log(index)
-							console.log(redeemScript)
 							pp.sign(index, Bitcoin.ECPair.fromWIF(compatibles[addresses.indexOf(address)]), redeemScript);
 						} else {
-							console.log('signing normal');
-							console.log(address)
-							console.log(addresses.indexOf(address))
-							console.log(addresses)
-							console.log(compatibles)
-							console.log(compatibles[addresses.indexOf(address)])
-
 							pp.sign(index, Bitcoin.ECPair.fromWIF(compatibles[addresses.indexOf(address)]));
 						}
 					})
@@ -759,7 +720,7 @@ var DeriveView = Backbone.View.extend({
 		})
 	},
 	addRandomWord: function() {
-		$('.passphrase').val( $('.passphrase').val() + ' ' + randomWords(1) );
+		$('.passphrase').val( $('.passphrase').val() + ($('.passphrase').val() ? ' ' : '') + randomWords(1) );
 		this.adjustPassphraseSize();
 
 	},
