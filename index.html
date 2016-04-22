@@ -29,8 +29,6 @@
 		<link rel="stylesheet" type="text/css" href="css/index.css" />
 	</head>
 	<body>
-
-
 		<div class="index" id="index" data-role="page" data-theme="b" data-direction='reverse'>
 			<div class="indexHolder" id="indexHolder" data-role="page" data-theme="b"></div>
 			</div>
@@ -57,10 +55,17 @@
 			</div>
 			<div style='left-margin:20px' class='result ' id='result'>
 				<ul class="ui-listview" data-role="listview" data-type="horizontal" style="margin-left:10px; margin-right:10px">
-					<h3 style="display:<%=masterKey ? 'block' : 'none'%>">Master Key is in memory</h3>
-					<li class="" style="margin-top:20px">
-						<a href="" data-role="button" data-transition="slide" class="btn-forget-master-key ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>" style="display:<%=masterKey ? 'block' : 'none'%>">FORGET PUBLIC MASTER KEY</a>
+					<li class="" style="margin-top:20px; display:<%=masterKey ? 'block' : 'none'%>">
+						<a href="" data-role="button" data-transition="slide" class="btn-forget-master-key ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>">FORGET PUBLIC MASTER KEY</a>
 					</li>
+					<li id='qrcode-masterpubkey'></li>
+					<li class="" style="margin-top:20px; display:<%=masterKey ? 'block' : 'none'%>">
+						<a href="" data-role="button" data-transition="slide" class="btn-get-secondary ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>" style="display:<%=!secondaryMasterKey || 'none'%>">USE SECONDARY PHONE FOR MULTISIG</a>
+					</li>
+					<li class="" style="margin-top:20px; display:<%=secondaryMasterKey ? 'block' : 'none'%>">
+						<a href="" data-role="button" data-transition="slide" class="btn-forget-secondary-master-key ui-btn ui-icon-carat-r ui-btn-icon-right <%=masterKey || 'ui-disabled'%>">FORGET SECONDARY MASTER KEY</a>
+					</li>
+					<li id='qrcode-secondaryMasterpubkey'></li>
 					<div style='left-margin:20px;display:<%=masterKey ? 'none' : 'block'%>' class='passphrase-config ' id='passphrase-config'>
 						<h4>First Setup</h4>
 						<ul class="ui-listview" data-role="listview" data-type="horizontal" style="margin-left:10px; margin-right:10px">
@@ -92,11 +97,10 @@
 				<ul>
 				<div data-role="popup" id="popupInfo4" class="ui-content" data-theme="a" style="max-width:350px;font-family:'Arial';">
 	  			<p>
-		  			1 - Choose your master key</br>
-		  			2 - Manually derive it with a chosen nonce</br>
 		  			<b>REMEMBER !</b></br> If an attacker get access to your <b>Master Public Key</b> as well one <b>SINGLE</b> private key, he will be able to recover <b>All</b> your private keys ! Never compromise the PubKey or any Pkey ! </br>
-		  				The warp seed creates an HD node from the SHA256 of the WIF of a <a href="https://keybase.io/warp">Warp Wallet</a>
-		  				You can use <a href="http://coinb.in">Coinb.in</a> and <a href="https://keybase.io/warp">Warp Wallet</a> to confirm the same output.
+		  			<b>For your record:</b></br>The formula used to get this master pubkey is using bitcoinjs as followed : </br>Bitcoin.HDNode.fromSeedHex( *PKey in Hex from Warpwallet* )</br>
+		  			You can use a secondary device for using multisig in order to achieve optimal safety</br>
+		  			<b>Double checks are recommended!</b></br>
 	  			</p>
 				</div>
 			</div>
@@ -129,7 +133,7 @@
 			<div data-role='header' role='banner' class='ui-header ui-bar-inherit'>
 				<a href='#index' data-transition='slide' style="margin-top:10px" data-direction='reverse' class='btn-back ui-btn-left ui-btn ui-icon-home ui-btn-icon-notext' data-role='button' role='button' style='display:block'></a>
 				<!--<a href="#popupInfo2" data-rel="popup" data-transition="pop" data-theme="b" style="margin-top:10px" class="my-tooltip-btn ui-btn ui-nodisc-icon ui-btn-inline ui-icon-info ui-btn-icon-notext"></a>-->
-				<a style="margin-top:10px;color:white" class="pubkeys-toggle"><%=pubkeys ? 'PubK' : 'Addr'%></a>
+				<a style="margin-top:10px;color:white" class="pubkeys-toggle"><%=pubkeys ? 'Addr' : 'PubK'%></a>
 				<h1 style='margin:0px;font-size:32px; text-align:center;padding:0px;padding-top:10px;padding-bottom:10px' id=''><%=pubkeys ? 'Pubkeys' : 'Addresses'%></h1>
 			</div>
 			<div style="display:<%=window.localStorage.getItem('masterKey') ? 'block' : 'none'%>; left-margin:20px" class='result' id='0'>

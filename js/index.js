@@ -164,10 +164,12 @@ var IndexView = Backbone.View.extend({
 var Vault = Backbone.Model.extend({
 	defaults: {
 		masterKey : window.localStorage.getItem('masterKey') || null,
+		secondaryMasterKey : window.localStorage.getItem('secondaryMasterKey') || null,
 		pubkeys : false
 	},
 	initialize : function() {
-		this.set('masterKey', window.localStorage.getItem('masterKey') || null)
+		this.set('masterKey', window.localStorage.getItem('masterKey') || null);
+		this.set('secondaryMasterKey', window.localStorage.getItem('secondaryMasterKey'));
 	},
 	togglepubkeys : function() {
 		this.set('pubkeys', !this.get('pubkeys'))
@@ -192,8 +194,8 @@ var VaultView = Backbone.View.extend({
 	addresses: 10,
 	pubkeysToggle: function(){
 		this.model.togglepubkeys();
-		this.trigger('change');
-		this.model.trigger('change')
+		//this.trigger('change');
+		//this.model.trigger('change')
 	},
 	addMoreAddresses: function(){
 		this.populate($('.address').length + 10);
@@ -201,21 +203,45 @@ var VaultView = Backbone.View.extend({
 	},
 	populate: function(n){
 		var master = this;
-		$('.addresses-list').html(_.map(Array(n || 10),function(a, i){ return '<li class="address ui-first-child" id="' + i + '">\
-					<a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">' + i + '\t : \t' + Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress() + '</a><div id="qrcode-pkey' + i + '"></div>\
+		var masterKey = window.localStorage.getItem('masterKey');
+		var masterKey2 = window.localStorage.getItem('secondaryMasterKey') || null;
+		var getMultisig = function(i) {
+			try { 
+				var pubkey = Bitcoin.HDNode.fromBase58(masterKey).derive(i).getPublicKeyBuffer().toString('hex');
+				var address = Bitcoin.HDNode.fromBase58(masterKey).derive(i).getAddress();
+				var multisigRedeemscript = masterKey2 ? Bitcoin.script.multisigOutput(2, [ 
+					Bitcoin.HDNode.fromBase58(masterKey).derive(i).getPublicKeyBuffer() ,
+					Bitcoin.HDNode.fromBase58(masterKey2).derive(i).getPublicKeyBuffer() ]) : null;
+				var multisigAddress = Bitcoin.address.fromOutputScript(Bitcoin.script.scriptHashOutput(Bitcoin.crypto.hash160(multisigRedeemscript)));
+				return {
+					address: multisigAddress , 
+					redeemscript : multisigRedeemscript.toString('hex')
+				}
+			} catch(err){
+				return null
+			}
+		}
+
+		$('.addresses-list').html(_.map(Array(n || 10),function(a, i){ 
+			var multisig = getMultisig(i);
+			var showText = multisig && multisig.address || Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(i).getAddress();
+			return '<li class="address ui-first-child" id="' + i + '">\
+					<a href="#vault" data-role="button" data-transition="slide" class="ui-btn ui-icon-carat-r ui-btn-icon-right">' + i + '\t : \t' + showText + '</a><div id="qrcode-pkey' + i + '"></div>\
 				</li>'}).join('\n')
 		);
 		$('.addresses-list').append('<li class="ui-first-child add-more-addresses" style=""><a style="font-size:50px; width:100%" class="ui-btn ui-icon-plus ui-btn-icon-notext" role="button" data-role="button"></a></li>')
 		$('.address').on('click', function(c){
+			var multisig = getMultisig(c.currentTarget.id);
 			if ($('canvas').length > 0){
 				$('canvas').remove();
 			} else {
 				$('[id^=qrcode-pkey]').empty()
 				var qrPkey = new QRCode("qrcode-pkey" + c.currentTarget.id, {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
 				if (master.model.get('pubkeys')) {
-					qrPkey.makeCode(Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(c.currentTarget.id).getPublicKeyBuffer().toString('hex')	)
+					qrPkey.makeCode( multisig && multisig.redeemscript || master.model.publicKey(c.currentTarget.id) )
 				} else {
-					qrPkey.makeCode(Bitcoin.HDNode.fromBase58(window.localStorage.getItem('masterKey')).derive(c.currentTarget.id).getAddress());
+					console.log('multisigAddress');
+					qrPkey.makeCode( multisig && multisig.address || master.model.address(c.currentTarget.id) );
 				}
 				$('canvas').css({
 					'position': 'relative',
@@ -400,6 +426,9 @@ var signView = Backbone.View.extend({
 		
 		//result['text'] = '0100000002e168e7d371c57e51ebd5a7610118331e6aaa012abe6648b4830ea74431a1ff5c01000000fd160100473044022074871f25d1e43e5a4da146fefbea5b308e04c29acf5457ee1c1fed265d124ab10220572095e6c7e1902b1cefd59aa6c591314490dc980829856d6e9ae8c5d149a81f0100004cc95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff193e1ad9df7ec7c7c18b17a5ebf16d639d0e1b4063ea11110e6fa42a87427f3400000000fd16010047304402202835c2653edd0932c814693fbc26b7ca881d8ac8f31c91b961f3dc1fa66f4f2102201762fd7ce33dad5469987b9fef58961b543a20d4862bae6fad1d2d147b254c2e0100004cc95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff01409c0000000000001976a9147355a4982ef75ab49f28225400bffd311b8f337288ac00000000'
 		//result['text'] = '0100000002e168e7d371c57e51ebd5a7610118331e6aaa012abe6648b4830ea74431a1ff5c01000000c95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff193e1ad9df7ec7c7c18b17a5ebf16d639d0e1b4063ea11110e6fa42a87427f3400000000c95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff01409c0000000000001976a9147355a4982ef75ab49f28225400bffd311b8f337288ac00000000'	
+		//to sign with grandwazoo: salt : grandwazoo45@gmail.com pws : watches spaces africa denial ; thank wager vietnam unavailable ; phyllis rate vanquish jane
+		//result['text'] = '0100000002e168e7d371c57e51ebd5a7610118331e6aaa012abe6648b4830ea74431a1ff5c01000000c95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff193e1ad9df7ec7c7c18b17a5ebf16d639d0e1b4063ea11110e6fa42a87427f3400000000c95241044b9db07152655a0ded297a8a29d8da2cfbdf29c861792d53d09954b7f39db379f7b0f44d21e7e3e79c738416c9e8816124e4e1412214106b434482c1656b117541045ca8f16ff28aed07fde794907131d4c69f503c415607a520a06032b2da196457f8551174daa3c0d0dcbeeb410dfe3cf583198186e352988606069ddb818fc30341043568620f555d2650461dd970f34cfbc805aec593983620bb6abfe8cdd3603f077929b5b99291b80f407e94ad5ce6772f65509cf3d1545b1111b86ceb78bc335e53aeffffffff01409c0000000000001976a9147355a4982ef75ab49f28225400bffd311b8f337288ac00000000'
+
 			// IF PARTIAL QR CODE IS SENT, USERS SHOULD WRITE IT WITH FORMAT"n:tx"
 			if (result.text.indexOf(':') > -1){
 				chunks[result.text.split(':')[0]] = result.text.split(':')[1]
@@ -637,30 +666,33 @@ var Transaction = Backbone.Model.extend({
 
 var DeriveModel = Backbone.Model.extend({
 	defaults: {
-		masterKey : window.localStorage.getItem('masterKey') || null 
+		masterKey : window.localStorage.getItem('masterKey') || null ,
+		secondaryMasterKey : window.localStorage.getItem('secondaryMasterKey') || null
 	},
 	initialize : function() {
 		this.set('masterKey', window.localStorage.getItem('masterKey') || null)
+		this.set('secondaryMasterKey', window.localStorage.getItem('secondaryMasterKey') || null)
 	},
-	getData : function(n) {
-		var address = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getAddress() || null : null;
-		var pubkey = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).getPublicKeyBuffer().toString('hex') || null : null;
+	/*getData : function(n, secondary) {
+		var masterKey = secondary ? this.get('secondaryMasterKey') : this.get('masterKey');
+		var address = (masterKey) ? Bitcoin.HDNode.fromBase58(masterKey).derive(n).getAddress() || null : null;
+		var pubkey = (masterKey) ? Bitcoin.HDNode.fromBase58(masterKey).derive(n).getPublicKeyBuffer().toString('hex') || null : null;
 		try {
-			Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).keyPair.toWIF()
-			var pkey = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).derive(n).keyPair.toWIF() || null : null;
+			Bitcoin.HDNode.fromBase58(masterKey).derive(n).keyPair.toWIF()
+			var pkey = (masterKey) ? Bitcoin.HDNode.fromBase58(masterKey).derive(n).keyPair.toWIF() || null : null;
 		
 			} catch(err) {
 				console.log(err);
 				pkey = 'null';
 			}
-		var xpub = (this.get('masterKey')) ? Bitcoin.HDNode.fromBase58(this.get('masterKey')).neutered().toBase58() || null : null;
+		var xpub = (masterKey) ? Bitcoin.HDNode.fromBase58(masterKey).neutered().toBase58() || null : null;
 		return {
 			address : address ,
 			pubkey : pubkey , 
 			pkey : pkey,
 			xpub : xpub
 		}
-	},
+	},*/
 	saveMasterKey : function() {
 		try {
 			window.localStorage.setItem('masterKey', Bitcoin.HDNode.fromBase58( this.get('masterKey') ).neutered().toBase58());
@@ -680,6 +712,11 @@ var DeriveModel = Backbone.Model.extend({
 		window.localStorage.removeItem('masterKey');
 		this.set({'masterKey': null});
 		this.trigger('change');
+	},
+	deleteSecondaryMasterKey: function(){
+		window.localStorage.removeItem('secondaryMasterKey');
+		this.set({'secondaryMasterKey': null});
+		this.trigger('change');
 	}
 });
 
@@ -693,20 +730,50 @@ var DeriveView = Backbone.View.extend({
 		'keydown .salt': 'adjustPassphraseSize',
 		'click .randomize-words': 'randomizeWords',
 		'click .save-address': 'saveAddress',
-		'click .btn-forget-master-key': 'forgetMasterKey'
+		'click .btn-forget-master-key': 'forgetMasterKey',
+		'click .btn-forget-secondary-master-key': 'forgetSecondaryMasterKey', 
+		'click .btn-get-secondary' : 'getSecondary'
 	},
 	stat: '',
 	initialize: function() {
-		console.log(this.model.get('masterKey'));
+		
 	},
 	forgetMasterKey: function(){
 		var confirm = window.confirm('Are you really sure you want to delete this master key ?')
-		var confirm2 = window.confirm('Last chance ! There is no going back...')
+		var confirm2 = confirm ? window.confirm('Last chance ! There is no going back...') : null;
 		if (confirm && confirm2) {
 			this.model.deleteMasterKey();
 		}
 	},
-
+	forgetSecondaryMasterKey: function(){
+		var confirm = window.confirm('Are you really sure you want to delete this master key ?')
+		var confirm2 = confirm ? window.confirm('Last chance ! There is no going back...') : null;
+		if (confirm && confirm2) {
+			this.model.deleteSecondaryMasterKey();
+		}
+	},
+	getSecondary: function() {
+		var master = this;
+		cordova.plugins.barcodeScanner.scan(
+			function (result) {
+				try{
+					var HDNode = Bitcoin.HDNode.fromBase58(result.text);
+					master.model.set('secondaryMasterKey', result.text );
+					window.localStorage.setItem('secondaryMasterKey', result.text);
+					master.model.trigger('change');
+				} catch(err) {
+					console.log('invalid WIF');
+				}
+			},
+			function (error) {
+				alert("there was some error: " + error);
+			}
+		)
+		/*var HDNode = Bitcoin.HDNode.fromBase58('xpub661MyMwAqRbcEbUifH6gCi3Gf2gfKVtNWZPrn8FTUkPmCuCcu7VS6z2Dsb2hbHhEeYKexXWguM3P38X2BnS3GajeP8QLiHsyZtucS7KgCC4');
+		master.model.set('secondaryMasterKey', 'xpub661MyMwAqRbcEbUifH6gCi3Gf2gfKVtNWZPrn8FTUkPmCuCcu7VS6z2Dsb2hbHhEeYKexXWguM3P38X2BnS3GajeP8QLiHsyZtucS7KgCC4' );
+		window.localStorage.setItem('secondaryMasterKey', 'xpub661MyMwAqRbcEbUifH6gCi3Gf2gfKVtNWZPrn8FTUkPmCuCcu7VS6z2Dsb2hbHhEeYKexXWguM3P38X2BnS3GajeP8QLiHsyZtucS7KgCC4');
+		master.model.trigger('change');*/
+	},
 	saveAddress: function() {
 
 		//window.localStorage.setItem('data')
@@ -740,7 +807,39 @@ var DeriveView = Backbone.View.extend({
 		}
 	},
 	render: function() {
-		this.$el.html(this.template({masterKey: this.model.get('masterKey')}));
+		this.$el.html(this.template({secondaryMasterKey: this.model.get('secondaryMasterKey') || null, masterKey: this.model.get('masterKey')}));
+		if (this.model.get('masterKey')) {
+			var qrPkey = new QRCode("qrcode-masterpubkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
+			qrPkey.makeCode(this.model.get('masterKey'));
+			$('canvas').css({
+				'position': 'relative',
+				'margin-left': '10%',
+				'margin-right': '10%',
+				'width': '70%',
+				'vertical-align': 'middle',
+				'background':'default', 
+				'border': '8px solid #FFFFFF', 
+				'color': '#000000', 
+				'title': 'Details',
+				'hide': { effect: "fade", duration: 2000 }
+			});
+		}
+		if (this.model.get('secondaryMasterKey')) {
+			var qrPkey2 = new QRCode("qrcode-secondaryMasterpubkey", {width: 160, height: 160,correctLevel : QRCode.CorrectLevel.L, colorDark : 'black'});
+			qrPkey2.makeCode(this.model.get('secondaryMasterKey'));
+			$('canvas').css({
+				'position': 'relative',
+				'margin-left': '10%',
+				'margin-right': '10%',
+				'width': '70%',
+				'vertical-align': 'middle',
+				'background':'default', 
+				'border': '8px solid #FFFFFF', 
+				'color': '#000000', 
+				'title': 'Details',
+				'hide': { effect: "fade", duration: 2000 }
+			});
+		}
 		return this;
 	},
 
